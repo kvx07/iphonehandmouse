@@ -1,0 +1,7 @@
+certs/
+*.log
+.handmouse.json
+pointerd
+viewer
+__pycache__/
+.DS_Store

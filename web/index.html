@@ -1,0 +1,532 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no,maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>HandMouse</title>
+<style>
+  :root{
+    color-scheme: dark;
+    --fg:  rgba(255,255,255,.93);
+    --fg2: rgba(255,255,255,.44);
+    --fg3: rgba(255,255,255,.20);
+    --line: rgba(255,255,255,.085);
+    --red: #ff453a;
+    --green: #32d74b;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{
+    margin:0;height:100%;overflow:hidden;background:#000;color:var(--fg);
+    font-family:-apple-system,"SF Pro Text","SF Pro Display",system-ui,sans-serif;
+    letter-spacing:-.01em;-webkit-font-smoothing:antialiased;
+    user-select:none;-webkit-user-select:none;touch-action:none;
+  }
+  canvas{position:fixed;inset:0;width:100%;height:100%;display:block}
+
+  .hud{
+    position:fixed;top:max(16px,env(safe-area-inset-top));left:20px;
+    display:inline-flex;align-items:center;gap:7px;
+    padding:7px 13px;border-radius:999px;
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.05);
+    font-size:11px;color:var(--fg2);letter-spacing:.05em;
+  }
+  .dot{width:5px;height:5px;border-radius:50%;background:var(--red);
+    transition:background .3s;flex:none}
+  .dot.ok{background:var(--green)}
+  #readout{color:var(--fg3);letter-spacing:.04em;font-variant-numeric:tabular-nums}
+
+  .caption{
+    position:fixed;left:0;right:0;bottom:calc(30vh);text-align:center;
+    font-size:16px;font-weight:500;color:var(--fg2);line-height:1.65;
+    pointer-events:none;padding:0 44px;
+  }
+  .caption small{display:block;font-size:12.5px;font-weight:400;
+    color:var(--fg3);margin-top:9px;letter-spacing:0}
+
+  #badge{
+    position:fixed;left:0;right:0;top:50%;text-align:center;
+    font-size:11px;font-weight:600;letter-spacing:.3em;color:var(--fg3);
+    text-transform:uppercase;opacity:0;transition:opacity .3s;pointer-events:none;
+  }
+  #badge.on{opacity:1}
+
+  .dock{
+    position:fixed;left:0;right:0;bottom:0;padding:0 20px max(18px,env(safe-area-inset-bottom));
+    background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.9) 26%);
+    display:none;
+  }
+  .dock.on{display:block}
+  .dock.hidden{display:none}
+
+  .grab{display:flex;align-items:center;justify-content:center;
+    width:100%;height:20px;background:none;border:0;padding:0;margin-bottom:3px}
+  .grab:active{transform:none}
+  .grab i{width:36px;height:4px;border-radius:2px;background:rgba(255,255,255,.16)}
+
+  .show{
+    position:fixed;right:18px;bottom:max(18px,env(safe-area-inset-bottom));
+    padding:11px 20px;border-radius:999px;flex:none;width:auto;
+    background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.08);
+    color:rgba(255,255,255,.7);font-size:13px;display:none;
+  }
+  .sep{height:1px;background:var(--line);margin:0 2px 4px}
+
+  .fov{display:flex;align-items:center;gap:16px;height:50px;
+    font-size:12px;color:var(--fg2);letter-spacing:.02em}
+  input[type=range]{
+    flex:1;-webkit-appearance:none;appearance:none;height:30px;background:none;
+  }
+  input[type=range]::-webkit-slider-runnable-track{
+    height:1.5px;background:rgba(255,255,255,.17);border-radius:1px;
+  }
+  input[type=range]::-webkit-slider-thumb{
+    -webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+    background:#fff;margin-top:-6.75px;
+  }
+  #fv{width:36px;text-align:right;color:var(--fg);
+    font-variant-numeric:tabular-nums;font-size:12.5px}
+
+  .acts{display:flex;gap:8px}
+  button{
+    flex:1;background:rgba(255,255,255,.065);border:1px solid rgba(255,255,255,.055);
+    color:rgba(255,255,255,.62);border-radius:999px;
+    font-family:inherit;font-size:13px;font-weight:500;
+    padding:12px 0;letter-spacing:-.005em;
+    transition:background .16s,color .16s,transform .09s,border-color .16s;
+  }
+  button:active{background:rgba(255,255,255,.16);transform:scale(.97)}
+  button.on{background:#fff;color:#000;border-color:#fff}
+
+  .stop{
+    width:100%;flex:none;margin-top:8px;
+    background:rgba(255,69,58,.09);border:1px solid rgba(255,69,58,.16);
+    color:#ff6b60;font-weight:600;font-size:14px;padding:15px 0;letter-spacing:.01em;
+  }
+  .stop.paused{background:#fff;color:#000;border-color:#fff}
+
+  .start{
+    position:fixed;left:20px;right:20px;
+    bottom:max(20px,env(safe-area-inset-bottom));
+    padding:17px;border-radius:13px;
+    background:#fff;color:#000;border:0;
+    font-family:inherit;font-size:16px;font-weight:600;letter-spacing:-.01em;
+  }
+  .start:active{transform:scale(.985);background:#e8e8ed}
+</style>
+</head>
+<body>
+<canvas id="viz"></canvas>
+
+<div class="hud">
+  <i class="dot" id="dot"></i>
+  <span id="state">未连接</span>
+  <span id="readout"></span>
+</div>
+
+<div class="caption" id="hint">把 iPhone 当空中鼠标<br><small>点下方开始 · 需授权动作传感器</small></div>
+<div id="badge">已暂停</div>
+
+<div class="dock" id="panel">
+  <button class="grab" id="grab"><i></i></button>
+  <div class="sep"></div>
+  <div class="fov"><span>视野</span><input type="range" id="fov" min="22" max="90" value="55"><span id="fv">55°</span></div>
+  <div class="acts">
+    <button id="invx">反转 X</button>
+    <button id="invy">反转 Y</button>
+    <button id="recenter">回中</button>
+  </div>
+  <div class="acts">
+    <button id="clickL">左键</button>
+    <button id="clickR">右键</button>
+  </div>
+  <button id="stop" class="stop">停止</button>
+</div>
+
+<button id="show" class="show">控制</button>
+<button id="start" class="start">开始</button>
+
+<script>
+const $ = s => document.querySelector(s);
+const cv = $('#viz'), g = cv.getContext('2d');
+const stateEl = $('#state'), dot = $('#dot'), readout = $('#readout');
+const hint = $('#hint'), startBtn = $('#start'), panel = $('#panel');
+const stopBtn = $('#stop'), badge = $('#badge');
+
+const D2R = Math.PI / 180;
+let ws = null, running = false, baseM = null, paused = false;
+let last = { a: 0, b: 0, g: 0 };
+let curX = 0, curY = 0, tgtX = 0, tgtY = 0, ix = false, iy = false;
+let fov = 55, W = 0, H = 0, DPR = 1, R = 0, cx = 0, cy = 0;
+let bgCache = null, lastSendT = 0, sentN = 0, t1 = 0, hz = 0;
+
+/* ---------- rotation matrix: removes beta/gamma cross-talk ---------- */
+function mat(a, b, c) {
+  const A=a*D2R,B=b*D2R,C=c*D2R;
+  const cA=Math.cos(A),sA=Math.sin(A),cB=Math.cos(B),sB=Math.sin(B),cC=Math.cos(C),sC=Math.sin(C);
+  return [
+    cA*cC - sA*sB*sC, -cB*sA, cA*sC + cC*sA*sB,
+    cC*sA + cA*sB*sC,  cA*cB, -cA*cC*sB + sA*sC,
+    -cB*sC,            sB,     cB*cC
+  ];
+}
+function tiltDeg() {
+  if (!baseM) return [0, 0];
+  const Rc = mat(last.a, last.b, last.g);
+  const wx = Rc[2], wy = Rc[5], wz = Rc[8];
+  const x = baseM[0]*wx + baseM[3]*wy + baseM[6]*wz;
+  const y = baseM[1]*wx + baseM[4]*wy + baseM[7]*wz;
+  const cl = v => Math.max(-1, Math.min(1, v));
+  return [Math.asin(cl(x))/D2R, Math.asin(cl(y))/D2R];
+}
+
+/* ---------- sphere ---------- */
+const NP = 460;
+const PTS = [];
+for (let i = 0; i < NP; i++) {
+  const y = 1 - (i/(NP-1))*2;
+  const r = Math.sqrt(Math.max(0, 1-y*y));
+  const th = i * 2.399963229728653;
+  PTS.push([Math.cos(th)*r, y, Math.sin(th)*r]);
+}
+
+const SPRITE = document.createElement('canvas');
+SPRITE.width = SPRITE.height = 20;
+{
+  const s = SPRITE.getContext('2d');
+  const rg = s.createRadialGradient(10,10,0,10,10,10);
+  rg.addColorStop(0,'rgba(255,255,255,1)');
+  rg.addColorStop(.34,'rgba(255,255,255,.82)');
+  rg.addColorStop(.68,'rgba(255,255,255,.18)');
+  rg.addColorStop(1,'rgba(255,255,255,0)');
+  s.fillStyle = rg; s.fillRect(0,0,20,20);
+}
+const HALO = document.createElement('canvas');
+HALO.width = HALO.height = 256;
+{
+  const s = HALO.getContext('2d');
+  const rg = s.createRadialGradient(128,128,0,128,128,128);
+  rg.addColorStop(0,'rgba(210,225,255,.30)');
+  rg.addColorStop(.40,'rgba(170,195,255,.075)');
+  rg.addColorStop(1,'rgba(120,150,255,0)');
+  s.fillStyle = rg; s.fillRect(0,0,256,256);
+}
+
+const BODY = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const s = c.getContext('2d');
+  const rg = s.createRadialGradient(96, 88, 6, 128, 128, 128);
+  rg.addColorStop(0, 'rgba(255,255,255,.30)');
+  rg.addColorStop(.45, 'rgba(215,228,255,.13)');
+  rg.addColorStop(1, 'rgba(150,180,255,0)');
+  s.fillStyle = rg; s.fillRect(0, 0, 256, 256);
+  return c;
+})();
+
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2.5);
+  W = cv.clientWidth; H = cv.clientHeight;
+  cv.width = Math.round(W*DPR); cv.height = Math.round(H*DPR);
+  g.setTransform(DPR,0,0,DPR,0,0);
+  cx = W/2; cy = H/2;
+  R = Math.min(W, H) * 0.40;
+  buildBG();
+}
+
+function buildBG() {
+  const c = document.createElement('canvas');
+  c.width = Math.round(W*DPR); c.height = Math.round(H*DPR);
+  const b = c.getContext('2d');
+  b.setTransform(DPR,0,0,DPR,0,0);
+  b.strokeStyle = 'rgba(255,255,255,.045)';
+  b.lineWidth = 1;
+  b.beginPath(); b.arc(cx,cy,R,0,Math.PI*2); b.stroke();
+  bgCache = c;
+}
+
+/* ---------- emoji face ---------- */
+function renderEmoji(ch) {
+  const S = 512;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const e = c.getContext('2d');
+  e.font = '432px "Apple Color Emoji", "AppleColorEmoji", "Segoe UI Emoji", sans-serif';
+  e.textAlign = 'center';
+  e.textBaseline = 'middle';
+  e.fillText(ch, S/2, S/2 + 14);
+  return c;
+}
+const EMO_SMILE = renderEmoji('\u{1F60A}');   // 😊 待机
+const EMO_HAPPY = renderEmoji('\u{1F604}');   // 😄 快速移动
+const EMO_WOW   = renderEmoji('\u{1F633}');   // 😳 甩到边缘
+const EMO_SLEEP = renderEmoji('\u{1F634}');   // 😴 暂停
+
+const WARM = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const s = c.getContext('2d');
+  const rg = s.createRadialGradient(128,128,0,128,128,128);
+  rg.addColorStop(0,'rgba(255,214,10,.34)');
+  rg.addColorStop(.42,'rgba(255,190,60,.12)');
+  rg.addColorStop(1,'rgba(255,170,0,0)');
+  s.fillStyle = rg; s.fillRect(0,0,256,256);
+  return c;
+})();
+
+let trail = [], px = 0, py = 0, spd = 0;
+let isHappy = false, isWow = false;
+
+const GLOW = (() => {
+  const c = document.createElement('canvas');
+  c.width = c.height = 96;
+  const s = c.getContext('2d');
+  const rg = s.createRadialGradient(48,48,0,48,48,48);
+  rg.addColorStop(0,   'rgba(255,214,130,.9)');
+  rg.addColorStop(.30, 'rgba(255,186,70,.42)');
+  rg.addColorStop(.62, 'rgba(255,160,40,.11)');
+  rg.addColorStop(1,   'rgba(255,150,20,0)');
+  s.fillStyle = rg; s.fillRect(0,0,96,96);
+  return c;
+})();
+
+function drawFace(x, y, r, lookX, lookY, t, live, img) {
+  const dim = live ? 1 : 0.5;
+  const mag = Math.hypot(lookX, lookY);
+
+  // warm halo behind the emoji
+  const gr = r * 1.9;
+  g.globalAlpha = (0.55 + mag * 0.35) * dim;
+  g.drawImage(WARM, x-gr, y-gr, gr*2, gr*2);
+  g.globalAlpha = 1;
+
+  g.save();
+  g.translate(x, y);
+  g.rotate(lookX * 0.13);                 // 跟随倾斜轻微歪头
+  const s = 1 + Math.sin(t*1.6)*0.013 + mag*0.05;   // 呼吸 + 甩出去时撑大
+  g.scale(s, s);
+  g.globalAlpha = dim;
+  const d = r * 2.7;
+  g.drawImage(img, -d/2, -d/2, d, d);
+  g.restore();
+  g.globalAlpha = 1;
+}
+
+function draw(now) {
+  g.clearRect(0,0,W,H);
+  if (bgCache) g.drawImage(bgCache, 0, 0, W, H);
+
+  const live = running && !paused;
+  const t = now/1000;
+
+  // 轻微上下浮动，让它显得是活的
+  const bob = Math.sin(t*1.5) * R * 0.012;
+  const bx = cx + curX * R * 0.80;
+  const by = cy - curY * R * 0.80 + bob;
+
+  // 速度估计（带滞后，避免表情闪烁）
+  const inst = Math.hypot(bx - px, by - py);
+  px = bx; py = by;
+  spd = spd * 0.82 + inst * 0.18;
+  if (spd > 2.6) isHappy = true; else if (spd < 1.2) isHappy = false;
+
+  const mag = Math.hypot(curX, curY);
+  if (mag > 0.88) isWow = true; else if (mag < 0.78) isWow = false;
+
+  let img = EMO_SMILE;
+  if (!live) img = EMO_SLEEP;
+  else if (isWow) img = EMO_WOW;
+  else if (isHappy) img = EMO_HAPPY;
+
+  // 白色连贯尾迹：锥形分段，越往外越粗越淡
+  trail.push([bx, by]);
+  if (trail.length > 46) trail.shift();
+
+  const n = trail.length;
+  if (n > 2) {
+    // 慢速时补一段最小长度，保证看得见
+    const pts = trail.slice();
+    const dx0 = bx - pts[0][0], dy0 = by - pts[0][1];
+    const d0 = Math.hypot(dx0, dy0);
+    const minLen = 24 + Math.min(126, spd * 46);
+    if (d0 > 0.4 && d0 < minLen) {
+      const k = minLen / d0;
+      pts[0] = [bx - dx0 * k, by - dy0 * k];
+    }
+
+    g.lineCap = 'round';
+    g.lineJoin = 'round';
+    for (let i = 1; i < n; i++) {
+      const u = i / n;                       // 0 = 尾梢, 1 = 脸
+      const [x0, y0] = pts[i-1];
+      const [x1, y1] = pts[i];
+      g.strokeStyle = `rgba(255,255,255,${Math.pow(u, 1.15) * 0.86})`;
+      g.lineWidth = 2 + u * 16;
+      g.beginPath();
+      g.moveTo(x0, y0);
+      g.lineTo(x1, y1);
+      g.stroke();
+    }
+  }
+
+  drawFace(bx, by, R*0.29, curX, curY, t, live, img);
+}
+
+/* ---------- loop: 绘制与发送解耦 ---------- */
+function loop(now) {
+  const k = 0.30;
+  curX += (Math.max(-1,Math.min(1,tgtX)) - curX) * k;
+  curY += (Math.max(-1,Math.min(1,tgtY)) - curY) * k;
+  draw(now);
+  requestAnimationFrame(loop);
+}
+
+function setState(txt, ok) {
+  stateEl.textContent = txt;
+  dot.className = 'dot' + (ok ? ' ok' : '');
+}
+
+const PLAIN = new URLSearchParams(location.search).has('plain');
+
+let wsAlive = false;
+
+function connect() {
+  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+  const host = location.hostname || 'localhost';
+  ws = new WebSocket(PLAIN ? 'ws://127.0.0.1:8444/ws' : 'wss://' + host + ':8443/ws');
+  ws.onopen = () => {
+    wsAlive = true;
+    setState(MIRROR ? '同步中' : '已连接', true);
+    if (!MIRROR) { paused = false; send({ cmd: 'resume' }); }
+  };
+  ws.onclose = () => {
+    wsAlive = false;
+    setState('连接断开', false);
+    if (running) setTimeout(connect, 900);
+  };
+  ws.onerror = () => { wsAlive = false; setState('连接失败', false); };
+  ws.onmessage = ev => {
+    try {
+      const m = JSON.parse(ev.data);
+      if (m.state) {
+        fov = m.state.fov;
+        $('#fov').value = fov; $('#fv').textContent = fov + '°';
+        ix = !!m.state.ix; $('#invx').classList.toggle('on', ix);
+        iy = !!m.state.iy; $('#invy').classList.toggle('on', iy);
+      }
+      if (m.m) { tgtX = m.m[0]; tgtY = m.m[1]; setState('同步中', true); }
+    } catch (e) {}
+  };
+}
+
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+/* 发送走事件回调，不经过 rAF —— 消除相位不同步造成的抖动 */
+function emitTilt(now) {
+  if (!baseM) return;
+  const [tx, ty] = tiltDeg();
+  tgtX = (ix ? -1 : 1) * tx / (fov/2);
+  tgtY = (iy ? -1 : 1) * ty / (fov/2);
+  send({ tx: +tx.toFixed(2), ty: +ty.toFixed(2) });
+  sentN++;
+  if (now - t1 > 500) {
+    hz = Math.round(sentN*1000/(now-t1));
+    sentN = 0; t1 = now;
+    readout.textContent = hz + ' Hz';
+  }
+}
+
+function onOrient(e) {
+  if (!running) return;
+  const a = e.alpha ?? 0, b = e.beta ?? 0, c = e.gamma ?? 0;
+  if (baseM === null) baseM = mat(a, b, c);
+  last = { a, b, g: c };
+  const now = performance.now();
+  if (!paused && now - lastSendT >= 8) {
+    lastSendT = now;
+    emitTilt(now);
+  }
+}
+
+/* ---------- controls ---------- */
+async function begin() {
+  startBtn.disabled = true; startBtn.textContent = '启动中…';
+  try {
+    if (typeof DeviceOrientationEvent !== 'undefined' &&
+        typeof DeviceOrientationEvent.requestPermission === 'function') {
+      const r = await DeviceOrientationEvent.requestPermission();
+      if (r !== 'granted') throw new Error('传感器权限被拒绝');
+    }
+    window.addEventListener('deviceorientation', onOrient, true);
+    connect();
+    running = true; paused = false; baseM = null;
+    panel.classList.add('on');
+    startBtn.style.display = 'none';
+    hint.style.display = 'none';
+    stopBtn.textContent = '停止';
+    stopBtn.classList.remove('paused');
+    resize();
+    t1 = performance.now();
+    requestAnimationFrame(loop);
+  } catch (err) {
+    hint.innerHTML = '启动失败<small>' + err.message + '</small>';
+    startBtn.disabled = false; startBtn.textContent = '重试';
+  }
+}
+
+function togglePause() {
+  paused = !paused;
+  if (paused) {
+    send({ cmd: 'pause' });
+    stopBtn.textContent = '继续'; stopBtn.classList.add('paused');
+    badge.classList.add('on'); setState('已暂停', false);
+  } else {
+    baseM = null; tgtX = tgtY = 0;
+    send({ cmd: 'resume' });
+    stopBtn.textContent = '停止'; stopBtn.classList.remove('paused');
+    badge.classList.remove('on'); setState('已连接', true);
+  }
+}
+
+startBtn.onclick = begin;
+stopBtn.onclick = togglePause;
+$('#recenter').onclick = () => { baseM = null; tgtX = tgtY = 0; curX = curY = 0; send({ cmd: 'reset' }); };
+$('#clickL').onclick = () => send({ cmd: 'click' });
+$('#clickR').onclick = () => send({ cmd: 'rclick' });
+$('#grab').onclick = () => {
+  panel.classList.add('hidden');
+  $('#show').style.display = 'block';
+};
+$('#show').onclick = () => {
+  panel.classList.remove('hidden');
+  $('#show').style.display = 'none';
+};
+$('#fov').oninput = e => { fov = +e.target.value; $('#fv').textContent = fov + '°'; send({ cmd: 'fov', v: fov }); };
+$('#invx').onclick = e => { ix = !ix; e.target.classList.toggle('on', ix); send({ cmd: 'invx' }); };
+$('#invy').onclick = e => { iy = !iy; e.target.classList.toggle('on', iy); send({ cmd: 'invy' }); };
+
+const MIRROR = new URLSearchParams(location.search).has('mirror');
+
+setInterval(() => {
+  if (running && (!ws || ws.readyState > 1)) connect();
+}, 2500);
+
+resize();
+requestAnimationFrame(loop);
+
+if (MIRROR) {
+  running = true;
+  baseM = null;
+  panel.style.display = 'none';
+  startBtn.style.display = 'none';
+  hint.style.display = 'none';
+  stopBtn.style.display = 'none';
+  connect();
+  document.documentElement.style.cursor = 'none';
+}
+
+document.addEventListener('gesturestart', e => e.preventDefault());
+</script>
+</body>
+</html>
