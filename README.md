@@ -1,8 +1,8 @@
-# HandMouse
+# iPhoneHandMouse
 
 Tilt an iPhone, the Mac cursor follows. No hardware, no app install — one web page.
 
-![HandMouse](preview.png)
+![iPhoneHandMouse](preview.png)
 
 ## Why this exists
 

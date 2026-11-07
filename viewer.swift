@@ -25,7 +25,7 @@ let W: CGFloat = 430, H: CGFloat = 920
 let win = NSWindow(contentRect: NSRect(x: 0, y: 0, width: W, height: H),
                    styleMask: [.titled, .closable, .resizable, .miniaturizable],
                    backing: .buffered, defer: false)
-win.title = "HandMouse 演示"
+win.title = "iPhoneHandMouse 演示"
 win.backgroundColor = .black
 win.appearance = NSAppearance(named: .darkAqua)
 
